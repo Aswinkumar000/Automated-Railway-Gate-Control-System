@@ -1,0 +1,106 @@
+ARDUINO CODE FOR MY PROJECT:
+
+
+#define IR_SENSOR_ARRIVAL 2   
+#define IR_SENSOR_EXIT 3    
+#define SERVO_PIN 9           
+#define BUZZER 6              
+#define RED_LED 7           
+#define GREEN_LED 8         
+
+// Ultrasonic pins
+#define TRIG_PIN 4
+#define ECHO_PIN 5
+
+void moveServo(int angle) {
+  int pulseWidth = (angle * 11) + 500;  
+  for (int i = 0; i < 40; i++) {        
+    digitalWrite(SERVO_PIN, HIGH);
+    delayMicroseconds(pulseWidth);
+    digitalWrite(SERVO_PIN, LOW);
+    delayMicroseconds(20000 - pulseWidth);
+  }
+}
+
+long getDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 20000); // 20ms timeout
+  if (duration == 0) return 999;  // No echo received
+  long distance = duration * 0.034 / 2; // Convert to cm
+  return distance;
+}
+
+// Setup 
+void setup() {
+  pinMode(IR_SENSOR_ARRIVAL, INPUT);
+  pinMode(IR_SENSOR_EXIT, INPUT);
+  pinMode(SERVO_PIN, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  // Initial state: gate open, green ON
+  moveServo(90);                   
+  digitalWrite(GREEN_LED, HIGH);
+  digitalWrite(RED_LED, LOW);
+  digitalWrite(BUZZER, LOW);
+
+  Serial.begin(9600);
+}
+
+//  Main Loop 
+void loop() {
+  int arrival = digitalRead(IR_SENSOR_ARRIVAL);
+  int exitTrain = digitalRead(IR_SENSOR_EXIT);
+
+  //  Train arrives → warning + close gate
+  if (arrival == LOW) {   
+    Serial.println("Train detected - Closing Gate!");
+
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+
+    // Buzzer warning (beep style instead of long buzz)
+    for (int i = 0; i < 5; i++) {
+      digitalWrite(BUZZER, HIGH);
+      delay(300);
+      digitalWrite(BUZZER, LOW);
+      delay(300);
+    }
+
+    // Close gate
+    moveServo(0);
+    delay(1000);
+
+    // While train is inside → check obstacle with ultrasonic
+    while (digitalRead(IR_SENSOR_EXIT) == HIGH) {  
+      long dist = getDistance();
+      if (dist > 0 && dist < 15) {  // Obstacle within 15 cm
+        Serial.println("⚠ Obstacle detected! Opening gate temporarily...");
+        moveServo(90);   // Open temporarily
+        delay(2000);
+        moveServo(0);    // Close again
+      }
+    }
+  }
+
+  //  Train exits → open gate safely
+  if (exitTrain == LOW) {
+    Serial.println("Train exited - Opening Gate!");
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, HIGH);
+    moveServo(90);  
+    digitalWrite(BUZZER, LOW);
+    delay(2000);
+  }
+}
+
+
+
