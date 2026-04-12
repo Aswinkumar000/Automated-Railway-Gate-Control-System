@@ -5,7 +5,7 @@
 
 ## 📸 Project Demo
 
-![Automated Railway Gate Control System](WIN_20250826_15_37_57_Pro.jpg)
+![Automated Railway Gate Control System](WhatsApp_Image_2025-09-12_at_21_47_30_4bbe95ff.jpg)
 
 > *Real working model built using Arduino Uno, IR sensors, ultrasonic sensor, servo motor, and LED indicators on a miniature railway track.*
 
