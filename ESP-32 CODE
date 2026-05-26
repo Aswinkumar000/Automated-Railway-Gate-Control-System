@@ -1,0 +1,171 @@
+#include <ESP32Servo.h>
+
+#define IR_SENSOR_ARRIVAL 34  
+#define IR_SENSOR_EXIT 35     
+#define TRIG_PIN 5            
+#define ECHO_PIN 18           
+#define BUZZER_PIN 14         
+#define RED_LED 27            
+#define GREEN_LED 26         
+
+Servo gateServo;
+
+// Function to measure distance using Ultrasonic Sensor
+float getDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000); // 30ms timeout
+  if (duration == 0) return 999;  // No valid reading, return high value
+  float distance = (duration * 0.0343) / 2;  // Convert to cm
+  return distance;
+}
+
+// Variables to manage gate state
+bool isGateClosed = false;  // Track if the gate is closed
+bool trainDetected = false; // Track if a train is present
+bool trainDeparted = false; // Ensure next train arrival is awaited
+int approachingSensor = 0;  // 0 = No Train, 1 = Sensor 1 to Sensor 2, 2 = Sensor 2 to Sensor 1
+
+void setup() {
+  Serial.begin(115200);
+  
+  pinMode(IR_SENSOR_ARRIVAL, INPUT);
+  pinMode(IR_SENSOR_EXIT, INPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(RED_LED, OUTPUT);
+  pinMode(GREEN_LED, OUTPUT);
+
+  gateServo.attach(SERVO_PIN);
+  gateServo.write(90);  // Gate Open Position
+  digitalWrite(GREEN_LED, HIGH);
+}
+
+void loop() {
+  int trainAtSensor1 = digitalRead(IR_SENSOR_ARRIVAL); // IR1
+  int trainAtSensor2 = digitalRead(IR_SENSOR_EXIT);    // IR2
+  float distance = getDistance();
+
+  // *Train Approaching from Sensor 1 to Sensor 2*
+  if (trainAtSensor1 == LOW && !isGateClosed && approachingSensor == 0 && !trainDeparted) {
+    approachingSensor = 1;
+    Serial.println(" Train Approaching from Sensor 1 to Sensor 2! Checking for obstacles...");
+
+    if (distance < 10.0) { 
+      Serial.println(" Object Detected! Warning...");
+      for (int i = 0; i < 2; i++) {  
+        digitalWrite(BUZZER_PIN, HIGH);
+        delay(300);
+        digitalWrite(BUZZER_PIN, LOW);
+        delay(300);
+      }
+      Serial.println("Opening gate for 2 seconds...");
+      for (int pos = 0; pos <= 90; pos += 5) {
+        gateServo.write(pos);
+        delay(50);
+      }
+      delay(2000);  
+    }
+
+    Serial.println("Closing Gate...");
+    digitalWrite(BUZZER_PIN, HIGH);
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+    
+    for (int pos = 90; pos >= 0; pos -= 5) {
+      gateServo.write(pos);
+      delay(50);
+    }
+    digitalWrite(BUZZER_PIN, LOW);
+    
+    isGateClosed = true;
+    trainDetected = true;
+
+    Serial.println(" Waiting for 3 seconds after closing the gate...");
+    delay(3000);  
+  }
+
+  // Train Approaching from Sensor 2 to Sensor 1*
+  if (trainAtSensor2 == LOW && !isGateClosed && approachingSensor == 0 && !trainDeparted) {
+    approachingSensor = 2;
+    Serial.println(" Train Approaching from Sensor 2 to Sensor 1! Checking for obstacles...");
+
+    if (distance < 10.0) { 
+      Serial.println(" Object Detected! Warning...");
+      for (int i = 0; i < 2; i++) {  
+        digitalWrite(BUZZER_PIN, HIGH);
+        delay(300);
+        digitalWrite(BUZZER_PIN, LOW);
+        delay(300);
+      }
+      Serial.println("Opening gate for 2 seconds...");
+      for (int pos = 0; pos <= 90; pos += 5) {
+        gateServo.write(pos);
+        delay(50);
+      }
+      delay(2000);  
+    }
+
+    Serial.println(" Closing Gate...");
+    digitalWrite(BUZZER_PIN, HIGH);
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, LOW);
+    
+    for (int pos = 90; pos >= 0; pos -= 5) {
+      gateServo.write(pos);
+      delay(50);
+    }
+    digitalWrite(BUZZER_PIN, LOW);
+    
+    isGateClosed = true;
+    trainDetected = true;
+
+    Serial.println("⏳ Waiting for 3 seconds after closing the gate...");
+    delay(3000);  // *Added delay after closing the gate*
+  }
+
+  
+  if ((trainAtSensor1 == LOW || trainAtSensor2 == LOW) && isGateClosed) {
+    Serial.println(" Train still detected! Keeping gate closed.");
+  }
+
+  if (trainDetected) {
+    if ((approachingSensor == 1 && trainAtSensor2 == LOW) || (approachingSensor == 2 && trainAtSensor1 == LOW)) {
+      Serial.println("Train Departed - Opening Gate");
+      digitalWrite(RED_LED, LOW);
+      digitalWrite(GREEN_LED, HIGH);
+
+      // Open the gate
+      for (int pos = 0; pos <= 90; pos += 5) {
+        gateServo.write(pos);
+        delay(50);
+      }
+
+      Serial.println(" Keeping the gate open for 5 seconds before allowing next detection...");
+      delay(5000);  // *Wait before allowing a new train detection*
+
+      Serial.println(" Ready for the next train arrival...");
+      
+      // Reset flags
+      isGateClosed = false;
+      trainDetected = false;
+      trainDeparted = true;  // Mark train departure
+
+      // *Ensure at least one sensor goes HIGH before detecting the next train*
+      while (digitalRead(IR_SENSOR_ARRIVAL) == LOW || digitalRead(IR_SENSOR_EXIT) == LOW) {
+        delay(100);
+      }
+
+      Serial.println(" System reset, waiting for new train detection...");
+      trainDeparted = false;  // Ready for the next train
+      approachingSensor = 0;  
+    }
+  }
+
+  delay(500);
+}
